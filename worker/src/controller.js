@@ -20,13 +20,13 @@ function handleTaskQueue() {
 }
 
 async function processTask(task) {
-    const { hash, maxLength, alphabet, partNumber, partCount, requestId } = task;
+    const { idPartTask } = task;
     let workerIndex
-    console.log(requestId);
+    console.log(idPartTask);
 
     const worker = new Worker('./src/worker.js');
 
-    worker.postMessage({ hash, maxLength, alphabet, partNumber, partCount, requestId, sharedMap });
+    worker.postMessage({ idPartTask });
 
     worker.on('message', async (data) => {
         const { found, requestId, status } = data;
@@ -48,31 +48,32 @@ async function processTask(task) {
     });
 
     worker.on('error', (error) => {
-        console.error(`Ошибка в worker для задачи ${requestId}: ${error.message}`);
+        console.error(`Ошибка в worker для задачи ${idPartTask}: ${error.message}`);
         activeWorkers--;
         handleTaskQueue();
     });
 
     worker.on('exit', (code) => {
         if (code !== 0) {
-            console.error(`Worker завершился с ошибкой для задачи ${requestId}, код: ${code}`);
+            console.error(`Worker завершился с ошибкой для задачи ${idPartTask}, код: ${code}`);
         }
     });
 }
 
 export const postNewTask = async (req, res) => {
-    const { hash, maxLength, alphabet, partNumber, partCount, requestId } = req.body;
+    const { idPartTask } = req.body;
 
-    if (!hash || !alphabet || !maxLength || !partNumber || !partCount || !requestId) {
+    if (!idPartTask) {
         return res.status(400).json({ error: "Invalid task data" });
     }
 
     if (activeWorkers < 2) {
         ++activeWorkers;
-        processTask({ hash, maxLength, alphabet, partNumber, partCount, requestId });
-        console.log(`Задача ${requestId} отправлена на выполнение.`);
+        processTask({ idPartTask });
+        console.log(`Часть задачи = ${idPartTask} отправлена на выполнение.`);
     } else {
         taskQueue.push({ hash, maxLength, alphabet, partNumber, partCount, requestId });
+
         console.log(`Задача ${requestId} поставлена в очередь.`);
     }
 

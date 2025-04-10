@@ -1,6 +1,7 @@
 import { parentPort } from 'worker_threads';
 import { createHash } from 'crypto';
-import SharedMap from 'sharedmap';
+import PartTask from "./models/partTask.js";
+import mongoose from "mongoose";
 
 function hashString(str) {
     return createHash('md5').update(str).digest('hex');
@@ -34,32 +35,54 @@ function generateWordFromIndex(alphabet, maxLength, index) {
     return word;
 }
 
-async function hardWork(hash, maxLength, alphabet, partNumber, partCount, requestId, myMap) {
-    const totalWords = getTotalWordsCount(alphabet, maxLength);
+async function hardWork(idPartTask) {
+    let partTask
+    try {
+        console.log("Пытаюсь получить по id = ", idPartTask);
+        if (!mongoose.Types.ObjectId.isValid(idPartTask)) {
+            console.error("Некорректный ID");
+            return;
+        }
+        partTask = await PartTask.findById(idPartTask).maxTimeMS(60000) // падает с тайм аутом
+        console.log(partTask);
+    } catch (error) {
+        console.error("Ошибка при запросе: ", error);
+    }
+/*
+2025-04-10 20:36:06 Пытаюсь получить по id =  67f7c946bba4bc2e7d5392d3
+2025-04-10 20:36:16 Ошибка при запросе:  MongooseError: Operation `parttasks.findOne()` buffering timed out after 10000ms
+2025-04-10 20:36:16     at Timeout.<anonymous> (/app/node_modules/mongoose/lib/drivers/node-mongodb-native/collection.js:187:23)
+2025-04-10 20:36:16     at listOnTimeout (node:internal/timers:569:17)
+2025-04-10 20:36:16     at process.processTimers (node:internal/timers:512:7)
+2025-04-10 20:36:16 Ошибка в worker для задачи 67f7c946bba4bc2e7d5392d3: Cannot read properties of undefined (reading 'alphabet')
+2025-04-10 20:36:16 Worker завершился с ошибкой для задачи 67f7c946bba4bc2e7d5392d3, код: 1
+ */
+    const totalWords = getTotalWordsCount(partTask.alphabet, partTask.maxLength);
     const range = {
-        start: Math.floor((partNumber - 1) * totalWords / partCount),
-        end: Math.floor(partNumber * totalWords / partCount)
+        start: Math.floor((partTask.partNumber - 1) * totalWords / partTask.partCount),
+        end: Math.floor(partTask.partNumber * totalWords / partTask.partCount)
     };
 
     let found = [];
-    myMap.set(requestId, 0);
+    //myMap.set(requestId, 0);
 
     for (let i = range.start; i < range.end; i++) {
-        const word = generateWordFromIndex(alphabet, maxLength, i);
+        const word = generateWordFromIndex(partTask.alphabet, partTask.maxLength, i);
         if (hashString(word) === hash) {
             found.push(word);
         }
-        myMap.set(requestId, Math.floor((i - range.start) / (range.end - range.start) * 100));
+        partTask.percentComplete = Math.floor((i - range.start) / (range.end - range.start) * 100)
+        //myMap.set(requestId, Math.floor((i - range.start) / (range.end - range.start) * 100));
     }
-
-    parentPort.postMessage({ found, requestId, status: 'READY' });
+    partTask.status = "READY";
+    partTask.found = found;
+    partTask.save()
+    parentPort.postMessage({ status: 'READY' });
 }
 
 parentPort.on('message', (data) => {
 
-    const { hash, maxLength, alphabet, partNumber, partCount, requestId, sharedMap } = data;
-    const myMap = sharedMap
-    Object.setPrototypeOf(myMap, SharedMap.prototype);
+    const { idPartTask } = data;
 
-    hardWork(hash, maxLength, alphabet, partNumber, partCount, requestId, myMap);
+    hardWork(idPartTask);
 });

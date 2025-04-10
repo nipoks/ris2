@@ -1,7 +1,8 @@
 import axios from 'axios';
 import {v4 as uuidv4} from "uuid";
 import dotenv from "dotenv";
-
+import Task from "./models/task.js";
+import PartTask from "./models/partTask.js";
 
 dotenv.config();
 
@@ -11,7 +12,7 @@ const alphabet = 'abcdefghijklmnopqrstuvwxyz0123456789';
 
 export const getTaskStatus = async (req, res) => {
     const {requestId} = req.query;
-    if (!requestId || !requests[requestId + 1]) {
+    if (!requestId) {
         return res.status(400).json({error: "Invalid requestId"});
     }
     let progress = 0
@@ -101,27 +102,48 @@ export const postTaskToWorkers = async (req, res) => {
 
     console.log(`Новый запрос: ${requestId}`);
 
+    const newTask = new Task({
+        hash,
+        maxLength,
+        idTask: requestId,
+        status: 'CREATE',
+        found: [''],
+        percentComplete: 0,
+        alphabet: alphabet
+    })
+    await newTask.save()
+    console.log(await PartTask.findById('67f7c946bba4bc2e7d5392d3'))
+
     for (let index = 0; index < WORKERS.length; index++) {
         requests[requestId + (index + 1)] = {
             status: 'PENDING',
             found: null
         };
-        axios.post(`${WORKERS[index]}/internal/api/worker/hash/crack/task`, {
-            hash,
-            maxLength,
-            alphabet,
+        const partTask = new PartTask({
+            idTask: newTask.idTask,
+            idWorker: index,
+            found: [''],
+            status: 'CREATE',
+            percentComplete: 0,
             partNumber: index + 1,
             partCount: WORKERS.length,
-            requestId: requestId
+            alphabet: alphabet,
+            hash: newTask.hash,
+            maxLength: newTask.maxLength,
+        })
+        await partTask.save()
+        axios.post(`${WORKERS[index]}/internal/api/worker/hash/crack/task`, {
+            idPartTask: partTask._id
         }).then(response => {
-                requests[requestId + (index + 1)].status = 'IN_PROGRESS';
-                requests[requestId + (index + 1)].found = [''];
+                partTask.status = 'IN_PROGRESS'
             })
             .catch(error => {
+                ///TODO нужно отправить на другово воркера наверно
                 console.error(`Ошибка при отправки задачи воркеру ${index + 1}:`, error.response?.data || error.message);
             });
     }
-
+    newTask.status = 'IN_PROGRESS'
+    await newTask.save()
     res.json({ requestId });
 }
 

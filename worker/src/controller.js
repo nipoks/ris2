@@ -29,15 +29,15 @@ async function processTask(task) {
     worker.postMessage({ idPartTask });
 
     worker.on('message', async (data) => {
-        const { partTask } = data;
-        console.log(`Завершил обработку задачи ${idPartTask}. Найдено: ${partTask.found.length > 0 ? partTask.found : 'ничего'}`);
+        const { found, partNumber, status } = data;
+        console.log(`Завершил обработку задачи ${idPartTask}. Найдено: ${found.length > 0 ? found : 'ничего'}`);
 
         try {
             await axios.patch(`${MANAGER}/internal/api/manager/hash/crack/request`, {
-                partNumber: partTask.partNumber,
-                found: partTask.found.length > 0 ? partTask.found : null,
+                partNumber: partNumber,
+                found: found.length > 0 ? found : null,
                 requestId: idPartTask,
-                status: partTask.status,
+                status: status,
             });
             console.log(`Результат для задачи ${idPartTask} отправлен.`);
         } catch (error) {

@@ -44,55 +44,35 @@ async function hardWork(idPartTask) {
     } catch (error) {
         console.error("Ошибка при запросе: ", error);
     }
-    let totalWords
-    try {
-        console.log("!!!!!!!!!!!!!!!!!!!!!!!!");
-        console.log("Строка 51 ", partTask.alphabet, partTask.maxLength);
-        totalWords = getTotalWordsCount(partTask.alphabet, partTask.maxLength);
-        console.log("Строка 53 ", totalWords);
-    } catch (error) {
-        console.log("Ебатория легла тут 54", error);
-    }
+    const totalWords = getTotalWordsCount(partTask.alphabet, partTask.maxLength);
 
-    let range
-    try {
-        range = {
-            start: Math.floor((partTask.partNumber - 1) * totalWords / partTask.partCount),
-            end: Math.floor(partTask.partNumber * totalWords / partTask.partCount)
-        };
-        console.log("57 строка = ", range);
-    } catch (error) {
-        console.log("Ебатория легла тут 66", error);
-    }
+
+    const range = {
+        start: Math.floor((partTask.partNumber - 1) * totalWords / partTask.partCount),
+        end: Math.floor(partTask.partNumber * totalWords / partTask.partCount)
+    };
     let found = [];
 
-
-    try {
-        for (let i = range.start; i < range.end; i++) {
-            const word = generateWordFromIndex(partTask.alphabet, partTask.maxLength, i);
-            if (hashString(word) === partTask.hash) {
-                found.push(word);
-            }
-            partTask.percentComplete = Math.floor((i - range.start) / (range.end - range.start) * 100)
-            //myMap.set(requestId, Math.floor((i - range.start) / (range.end - range.start) * 100));
+    for (let i = range.start; i < range.end; i++) {
+        const word = generateWordFromIndex(partTask.alphabet, partTask.maxLength, i);
+        if (hashString(word) === partTask.hash) {
+            found.push(word);
         }
-    } catch (error) {
-        console.log("Ебатория легла тут 80", error);
+        partTask.percentComplete = Math.floor((i - range.start) / (range.end - range.start) * 100)
     }
 
-    try {
-        console.log("69 строка, найденные ответы = ", found);
-        partTask.status = "READY";
-        partTask.found = found;
-        partTask.save()
-    } catch (error) {
-        console.log("Ебатория легла тут 89", error);
-    }
+    partTask.status = "READY";
+    partTask.found = found;
+    await partTask.save()
 
     console.log("73 строка, результат задачи = ", partTask);
-
-    parentPort.postMessage({ partTask });
-}
+    await mongoose.disconnect();
+    try {
+        const safeFound = JSON.parse(JSON.stringify(partTask.found));
+        parentPort.postMessage({ found: safeFound, partNumber: partTask.partNumber, status: partTask.status });
+    } catch (error) {
+        console.error("Ошибка при отправке сообщения в основной поток: ", error);
+    }}
 
 parentPort.on('message', async (data) => {
 

@@ -30,40 +30,40 @@ services:
     networks:
       - crackhash_net
     restart: always
-#
-#  manager:
-#    container_name: manager
-#    build: ./manager
-#    ports:
-#      - "3000:3000"
-#    networks:
-#      - crackhash_net
-#    depends_on:
-#      - worker1
-#      - worker2
-#      - worker3
-#      - mongo
-#
-#  worker1:
-#    build: ./worker
-#    environment:
-#      - WORKER_NAME=worker1
-#    networks:
-#      - crackhash_net
-#
-#  worker2:
-#    build: ./worker
-#    environment:
-#      - WORKER_NAME=worker2
-#    networks:
-#      - crackhash_net
-#
-#  worker3:
-#    build: ./worker
-#    environment:
-#      - WORKER_NAME=worker3
-#    networks:
-#      - crackhash_net
+
+  manager:
+    container_name: manager
+    build: ./manager
+    ports:
+      - "3000:3000"
+    networks:
+      - crackhash_net
+    depends_on:
+      - worker1
+      - worker2
+      - worker3
+      - mongo
+
+  worker1:
+    build: ./worker
+    environment:
+      - WORKER_NAME=worker1
+    networks:
+      - crackhash_net
+
+  worker2:
+    build: ./worker
+    environment:
+      - WORKER_NAME=worker2
+    networks:
+      - crackhash_net
+
+  worker3:
+    build: ./worker
+    environment:
+      - WORKER_NAME=worker3
+    networks:
+      - crackhash_net
 
 volumes:
   mongo_data:

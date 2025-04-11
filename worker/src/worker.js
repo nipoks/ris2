@@ -39,50 +39,70 @@ async function hardWork(idPartTask) {
     let partTask
     try {
         console.log("Пытаюсь получить по id = ", idPartTask);
-        if (!mongoose.Types.ObjectId.isValid(idPartTask)) {
-            console.error("Некорректный ID");
-            return;
-        }
-        partTask = await PartTask.findById(idPartTask).maxTimeMS(60000) // падает с тайм аутом
-        console.log(partTask);
+        partTask = await PartTask.findById(idPartTask)
+        console.log("строка 47 = ", partTask);
     } catch (error) {
         console.error("Ошибка при запросе: ", error);
     }
-/*
-2025-04-10 20:36:06 Пытаюсь получить по id =  67f7c946bba4bc2e7d5392d3
-2025-04-10 20:36:16 Ошибка при запросе:  MongooseError: Operation `parttasks.findOne()` buffering timed out after 10000ms
-2025-04-10 20:36:16     at Timeout.<anonymous> (/app/node_modules/mongoose/lib/drivers/node-mongodb-native/collection.js:187:23)
-2025-04-10 20:36:16     at listOnTimeout (node:internal/timers:569:17)
-2025-04-10 20:36:16     at process.processTimers (node:internal/timers:512:7)
-2025-04-10 20:36:16 Ошибка в worker для задачи 67f7c946bba4bc2e7d5392d3: Cannot read properties of undefined (reading 'alphabet')
-2025-04-10 20:36:16 Worker завершился с ошибкой для задачи 67f7c946bba4bc2e7d5392d3, код: 1
- */
-    const totalWords = getTotalWordsCount(partTask.alphabet, partTask.maxLength);
-    const range = {
-        start: Math.floor((partTask.partNumber - 1) * totalWords / partTask.partCount),
-        end: Math.floor(partTask.partNumber * totalWords / partTask.partCount)
-    };
-
-    let found = [];
-    //myMap.set(requestId, 0);
-
-    for (let i = range.start; i < range.end; i++) {
-        const word = generateWordFromIndex(partTask.alphabet, partTask.maxLength, i);
-        if (hashString(word) === hash) {
-            found.push(word);
-        }
-        partTask.percentComplete = Math.floor((i - range.start) / (range.end - range.start) * 100)
-        //myMap.set(requestId, Math.floor((i - range.start) / (range.end - range.start) * 100));
+    let totalWords
+    try {
+        console.log("!!!!!!!!!!!!!!!!!!!!!!!!");
+        console.log("Строка 51 ", partTask.alphabet, partTask.maxLength);
+        totalWords = getTotalWordsCount(partTask.alphabet, partTask.maxLength);
+        console.log("Строка 53 ", totalWords);
+    } catch (error) {
+        console.log("Ебатория легла тут 54", error);
     }
-    partTask.status = "READY";
-    partTask.found = found;
-    partTask.save()
-    parentPort.postMessage({ status: 'READY' });
+
+    let range
+    try {
+        range = {
+            start: Math.floor((partTask.partNumber - 1) * totalWords / partTask.partCount),
+            end: Math.floor(partTask.partNumber * totalWords / partTask.partCount)
+        };
+        console.log("57 строка = ", range);
+    } catch (error) {
+        console.log("Ебатория легла тут 66", error);
+    }
+    let found = [];
+
+
+    try {
+        for (let i = range.start; i < range.end; i++) {
+            const word = generateWordFromIndex(partTask.alphabet, partTask.maxLength, i);
+            if (hashString(word) === partTask.hash) {
+                found.push(word);
+            }
+            partTask.percentComplete = Math.floor((i - range.start) / (range.end - range.start) * 100)
+            //myMap.set(requestId, Math.floor((i - range.start) / (range.end - range.start) * 100));
+        }
+    } catch (error) {
+        console.log("Ебатория легла тут 80", error);
+    }
+
+    try {
+        console.log("69 строка, найденные ответы = ", found);
+        partTask.status = "READY";
+        partTask.found = found;
+        partTask.save()
+    } catch (error) {
+        console.log("Ебатория легла тут 89", error);
+    }
+
+    console.log("73 строка, результат задачи = ", partTask);
+
+    parentPort.postMessage({ partTask });
 }
 
-parentPort.on('message', (data) => {
+parentPort.on('message', async (data) => {
 
-    const { idPartTask } = data;
+    const {idPartTask} = data;
+    await mongoose
+        .connect(process.env.MONGO_URI, {dbName: process.env.DB_NAME})
+        .then(async () => {
+            console.log("MongoDB connected in worker thread")
+        })
+        .catch((err) => console.error("MongoDB connection error:", err));
 
-    hardWork(idPartTask);
+    await hardWork(idPartTask);
 });

@@ -29,26 +29,26 @@ async function processTask(task) {
     worker.postMessage({ idPartTask });
 
     worker.on('message', async (data) => {
-        const { found, requestId, status } = data;
-        console.log(`Завершил обработку задачи ${requestId}. Найдено: ${found.length > 0 ? found : 'ничего'}`);
+        const { partTask } = data;
+        console.log(`Завершил обработку задачи ${idPartTask}. Найдено: ${partTask.found.length > 0 ? partTask.found : 'ничего'}`);
 
         try {
             await axios.patch(`${MANAGER}/internal/api/manager/hash/crack/request`, {
-                partNumber,
-                found: found.length > 0 ? found : null,
-                requestId: requestId,
-                status: status
+                partNumber: partTask.partNumber,
+                found: partTask.found.length > 0 ? partTask.found : null,
+                requestId: idPartTask,
+                status: partTask.status,
             });
-            console.log(`Результат для задачи ${requestId} отправлен.`);
+            console.log(`Результат для задачи ${idPartTask} отправлен.`);
         } catch (error) {
-            console.error(`Ошибка отправки результата задачи ${requestId}: ${error.message}`);
+            console.error(`Ошибка отправки результата задачи ${idPartTask}: ${error.message}`);
         }
         --activeWorkers;
         handleTaskQueue();
     });
 
     worker.on('error', (error) => {
-        console.error(`Ошибка в worker для задачи ${idPartTask}: ${error.message}`);
+        console.error(`Ошибка в worker для задачи ${idPartTask}: ${error.name} ${error.stack} ${error.cause}`);
         activeWorkers--;
         handleTaskQueue();
     });

@@ -12,7 +12,7 @@ app.use(AppRoutes);
 
 const PORT = process.env.PORT || 4000;
 
-mongoose
+await mongoose
     .connect(process.env.MONGO_URI, { dbName: process.env.DB_NAME })
     .then(async () => {
         console.log("MongoDB connected")

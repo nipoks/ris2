@@ -52,24 +52,31 @@ async function hardWork(idPartTask) {
         end: Math.floor(partTask.partNumber * totalWords / partTask.partCount)
     };
     let found = [];
+    let lastSavedPercent = 9;
 
     for (let i = range.start; i < range.end; i++) {
         const word = generateWordFromIndex(partTask.alphabet, partTask.maxLength, i);
         if (hashString(word) === partTask.hash) {
             found.push(word);
         }
-        partTask.percentComplete = Math.floor((i - range.start) / (range.end - range.start) * 100)
+        const percentComplete = Math.floor((i - range.start) / (range.end - range.start) * 100)
+        if (percentComplete >= lastSavedPercent + 10) {
+            partTask.percentComplete = percentComplete;
+            lastSavedPercent = partTask.percentComplete;
+            await partTask.save();
+        }
     }
 
     partTask.status = "READY";
     partTask.found = found;
+    partTask.percentComplete = '100'
     await partTask.save()
 
     console.log("73 строка, результат задачи = ", partTask);
     await mongoose.disconnect();
     try {
         const safeFound = JSON.parse(JSON.stringify(partTask.found));
-        parentPort.postMessage({ found: safeFound, partNumber: partTask.partNumber, status: partTask.status });
+        parentPort.postMessage({ found: safeFound, partNumber: partTask.partNumber, status: partTask.status, taskId: partTask.idTask });
     } catch (error) {
         console.error("Ошибка при отправке сообщения в основной поток: ", error);
     }}

@@ -1,20 +1,85 @@
 version: '3.8'
 
 services:
-  mongo:
+#  mongo:
+#    image: mongo:6.0
+#    container_name: mongo
+#    environment:
+#      MONGO_INITDB_ROOT_USERNAME: admin
+#      MONGO_INITDB_ROOT_PASSWORD: pass
+#    ports:
+#      - "27017:27017"
+#    volumes:
+#      - mongo_data:/data/db
+#    networks:
+#      - crackhash_net
+#    restart: always
+  mongo-primary:
     image: mongo:6.0
-    container_name: mongo
+    container_name: mongo-primary
+    command: [ "--replSet", "rs0", "--bind_ip_all", "--keyFile", "/etc/mongo-keyfile" ]
     environment:
       MONGO_INITDB_ROOT_USERNAME: admin
       MONGO_INITDB_ROOT_PASSWORD: pass
     ports:
       - "27017:27017"
     volumes:
-      - mongo_data:/data/db
+      - ./mongo-keyfile:/etc/mongo-keyfile:ro
+      - mongo_data_primary:/data/db
     networks:
       - crackhash_net
-    restart: always
 
+  mongo-secondary1:
+    image: mongo:6.0
+    container_name: mongo-secondary1
+    command: [ "--replSet", "rs0", "--bind_ip_all", "--keyFile", "/etc/mongo-keyfile" ]
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: admin
+      MONGO_INITDB_ROOT_PASSWORD: pass
+    volumes:
+      - ./mongo-keyfile:/etc/mongo-keyfile:ro
+      - mongo_data_secondary1:/data/db
+    networks:
+      - crackhash_net
+
+  mongo-secondary2:
+    image: mongo:6.0
+    container_name: mongo-secondary2
+    command: [ "--replSet", "rs0", "--bind_ip_all", "--keyFile", "/etc/mongo-keyfile" ]
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: admin
+      MONGO_INITDB_ROOT_PASSWORD: pass
+    volumes:
+      - ./mongo-keyfile:/etc/mongo-keyfile:ro
+      - mongo_data_secondary2:/data/db
+    networks:
+      - crackhash_net
+
+  mongo-init-replica:
+    image: mongo:6.0
+    container_name: mongo-init-replica
+    depends_on:
+      - mongo-primary
+      - mongo-secondary1
+      - mongo-secondary2
+    networks:
+      - crackhash_net
+    entrypoint: [
+      "sh", "-c",
+      "
+        sleep 10 &&
+        mongosh --host mongo-primary:27017 -u admin -p pass --authenticationDatabase admin --eval '
+          rs.initiate({
+            _id: \"rs0\",
+            members: [
+              { _id: 0, host: \"mongo-primary:27017\" },
+              { _id: 1, host: \"mongo-secondary1:27017\" },
+              { _id: 2, host: \"mongo-secondary2:27017\" }
+            ]
+          })
+        '
+      "
+    ]
 
   mongo-express:
     image: mongo-express:latest
@@ -22,11 +87,24 @@ services:
     environment:
       ME_CONFIG_MONGODB_ADMINUSERNAME: admin
       ME_CONFIG_MONGODB_ADMINPASSWORD: pass
-      ME_CONFIG_MONGODB_SERVER: mongo
+      ME_CONFIG_MONGODB_SERVER: mongo-primary
     ports:
       - "8081:8081"
     depends_on:
-      - mongo
+      - mongo-primary
+    networks:
+      - crackhash_net
+    restart: always
+
+  rabbitmq:
+    image: rabbitmq:3-management
+    container_name: rabbitmq
+    environment:
+      RABBITMQ_DEFAULT_USER: guest
+      RABBITMQ_DEFAULT_PASS: guest
+    ports:
+      - "5672:5672"   # AMQP
+      - "15672:15672" # веб-интерфейс
     networks:
       - crackhash_net
     restart: always
@@ -42,7 +120,8 @@ services:
       - worker1
       - worker2
       - worker3
-      - mongo
+      - mongo-primary
+      - rabbitmq
 
   worker1:
     build: ./worker
@@ -66,7 +145,9 @@ services:
       - crackhash_net
 
 volumes:
-  mongo_data:
+  mongo_data_primary:
+  mongo_data_secondary1:
+  mongo_data_secondary2:
 
 networks:
   crackhash_net:

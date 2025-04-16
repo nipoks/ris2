@@ -3,6 +3,7 @@ import dotenv from 'dotenv';
 import mongoose from "mongoose";
 
 import { AppRoutes } from "./routes.js";
+import {connectToRabbit} from "./rabbitConnection.js";
 
 dotenv.config();
 
@@ -12,13 +13,17 @@ app.use(AppRoutes);
 
 const PORT = process.env.PORT || 3000;
 
-mongoose
-    .connect(process.env.MONGO_URI, { dbName: process.env.DB_NAME })
+await mongoose
+    .connect(process.env.MONGO_URI, {
+        dbName: process.env.DB_NAME,
+        useNewUrlParser: true,
+        useUnifiedTopology: true })
     .then(async () => {
-    console.log("MongoDB connected")
-})
+        console.log("MongoDB connected")
+    })
     .catch((err) => console.error("MongoDB connection error:", err));
 
+await connectToRabbit()
 
 app.listen(PORT, () => {
     console.log("Запущен на порту 3000");

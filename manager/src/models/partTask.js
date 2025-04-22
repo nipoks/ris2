@@ -2,7 +2,6 @@ import mongoose, {Schema} from "mongoose"
 
 const PartTaskSchema = new Schema({
     idTask: { type: String, ref: "Task" },
-    idWorker: { type: String, required: true },
     found: { type: [String], required: true },
     status: { type: String, required: true },
     percentComplete: { type: Number, required: true },

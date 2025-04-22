@@ -1,19 +1,6 @@
 version: '3.8'
 
 services:
-#  mongo:
-#    image: mongo:6.0
-#    container_name: mongo
-#    environment:
-#      MONGO_INITDB_ROOT_USERNAME: admin
-#      MONGO_INITDB_ROOT_PASSWORD: pass
-#    ports:
-#      - "27017:27017"
-#    volumes:
-#      - mongo_data:/data/db
-#    networks:
-#      - crackhash_net
-#    restart: always
   mongo-primary:
     image: mongo:6.0
     container_name: mongo-primary

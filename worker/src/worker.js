@@ -1,7 +1,7 @@
 import { parentPort } from 'worker_threads';
 import { createHash } from 'crypto';
-import PartTask from "./models/partTask.js";
-import mongoose from "mongoose";
+import SharedMap from "sharedmap";
+
 
 function hashString(str) {
     return createHash('md5').update(str).digest('hex');
@@ -35,61 +35,37 @@ function generateWordFromIndex(alphabet, maxLength, index) {
     return word;
 }
 
-async function hardWork(idPartTask) {
-    let partTask
-    try {
-        console.log("Пытаюсь получить по id = ", idPartTask);
-        partTask = await PartTask.findById(idPartTask)
-        console.log("строка 47 = ", partTask);
-    } catch (error) {
-        console.error("Ошибка при запросе: ", error);
-    }
-    const totalWords = getTotalWordsCount(partTask.alphabet, partTask.maxLength);
-
+async function hardWork(idPartTask, alphabet, partNumber, partCount, hash, maxLength, myMap) {
+    const totalWords = getTotalWordsCount(alphabet, maxLength);
 
     const range = {
-        start: Math.floor((partTask.partNumber - 1) * totalWords / partTask.partCount),
-        end: Math.floor(partTask.partNumber * totalWords / partTask.partCount)
+        start: Math.floor((partNumber - 1) * totalWords / partCount),
+        end: Math.floor(partNumber * totalWords / partCount)
     };
+
     let found = [];
-    let lastSavedPercent = 9;
+    myMap.set(idPartTask, 0);
 
     for (let i = range.start; i < range.end; i++) {
-        const word = generateWordFromIndex(partTask.alphabet, partTask.maxLength, i);
-        if (hashString(word) === partTask.hash) {
+        const word = generateWordFromIndex(alphabet, maxLength, i);
+        if (hashString(word) === hash) {
             found.push(word);
         }
-        const percentComplete = Math.floor((i - range.start) / (range.end - range.start) * 100)
-        if (percentComplete >= lastSavedPercent + 10) {
-            partTask.percentComplete = percentComplete;
-            lastSavedPercent = partTask.percentComplete;
-            await partTask.save();
+        myMap.set(idPartTask, Math.floor((i - range.start) / (range.end - range.start) * 100));
+        if (i % 10000000 === 0) {
+            console.log(myMap.get(idPartTask));
         }
     }
+    myMap.set(idPartTask, 100);
 
-    partTask.status = "READY";
-    partTask.found = found;
-    partTask.percentComplete = '100'
-    await partTask.save()
+    parentPort.postMessage({found, idPartTask, status: 'READY'});
 
-    console.log("73 строка, результат задачи = ", partTask);
-    await mongoose.disconnect();
-    try {
-        const safeFound = JSON.parse(JSON.stringify(partTask.found));
-        parentPort.postMessage({ found: safeFound, partNumber: partTask.partNumber, status: partTask.status, taskId: partTask.idTask });
-    } catch (error) {
-        console.error("Ошибка при отправке сообщения в основной поток: ", error);
-    }}
+}
 
 parentPort.on('message', async (data) => {
+    const {idPartTask, alphabet, partNumber, partCount, hash, maxLength, sharedMap} = data;
+    const myMap = sharedMap
+    Object.setPrototypeOf(myMap, SharedMap.prototype);
 
-    const {idPartTask} = data;
-    await mongoose
-        .connect(process.env.MONGO_URI, {dbName: process.env.DB_NAME})
-        .then(async () => {
-            console.log("MongoDB connected in worker thread")
-        })
-        .catch((err) => console.error("MongoDB connection error:", err));
-
-    await hardWork(idPartTask);
+    await hardWork(idPartTask, alphabet, partNumber, partCount, hash, maxLength, myMap);
 });

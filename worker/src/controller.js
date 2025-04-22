@@ -11,7 +11,7 @@ let taskQueue = [];
 const sharedMap = new SharedMap(10 * 1024 * 1024, 40, 8);
 
 const MANAGER = process.env.MANAGER
-const QUEUE_NAME = `${process.env.WORKER_NAME}_queue`;
+//const QUEUE_NAME = `${process.env.WORKER_NAME}_queue`;
 
 function handleTaskQueue() {
     if (taskQueue.length > 0 && activeWorkers < 2) {
@@ -21,57 +21,60 @@ function handleTaskQueue() {
     }
 }
 
-async function processTask(task) {
-    const { idPartTask } = task;
-    let workerIndex
-    console.log(idPartTask);
+export function processTask(task) {
+    return new Promise((resolve, reject) => {
+        const { idPartTask, alphabet, partNumber, partCount, hash, maxLength } = task;
 
-    const worker = new Worker('./src/worker.js');
+        const worker = new Worker('./src/worker.js');
 
-    worker.postMessage({ idPartTask });
+        worker.postMessage({ idPartTask, alphabet, partNumber, partCount, hash, maxLength, sharedMap });
 
-    worker.on('message', async (data) => {
-        const { found, partNumber, status, taskId } = data;
-        console.log(`Завершил обработку задачи ${idPartTask}. Найдено: ${found.length > 0 ? found : 'ничего'}`);
-        const answer = {
-            partNumber: partNumber,
-            found: found.length > 0 ? JSON.parse(JSON.stringify(found)) : [],
-            idPartTask: idPartTask,
-            status: status,
-            taskId: taskId,
-        }
-        console.log(answer);
-        try {
-            await axios.patch(`${MANAGER}/internal/api/manager/hash/crack/request`, answer);
-            console.log(`Результат для задачи ${idPartTask} отправлен.`);
-        } catch (error) {
-            console.error(`Ошибка отправки результата задачи ${idPartTask}: ${error.message}`);
-        }
-        --activeWorkers;
-        handleTaskQueue();
-    });
+        worker.on('message', async (data) => {
+            const { found, idPartTask, status } = data;
+            console.log(`Завершил обработку задачи ${idPartTask}. Найдено: ${found.length > 0 ? found : 'ничего'}`);
+            const answer = {
+                found: found.length > 0 ? JSON.parse(JSON.stringify(found)) : [],
+                idPartTask: idPartTask,
+                status: status
+            };
+            try {
+                //await axios.patch(`${MANAGER}/internal/api/manager/hash/crack/request`, answer);
+                const channel = getRabbitChannel();
+                const ANSWER_QUEUE = 'answer_q';
+                await channel.assertQueue(ANSWER_QUEUE, { durable: true });
+                channel.sendToQueue(ANSWER_QUEUE, Buffer.from(JSON.stringify({answer})), { persistent: true });
 
-    worker.on('error', (error) => {
-        console.error(`Ошибка в worker для задачи ${idPartTask}: ${error.name} ${error.stack} ${error.cause}`);
-        activeWorkers--;
-        handleTaskQueue();
-    });
+                console.log(`Результат для задачи ${idPartTask} отправлен.`);
+                resolve(); // ✅ Всё, задача выполнена
+            } catch (error) {
+                console.error(`Ошибка отправки результата задачи ${idPartTask}: ${error.message}`);
+                reject(error); // ❌ Ошибка — чтоб Rabbit повторил
+            }
+        });
 
-    worker.on('exit', (code) => {
-        if (code !== 0) {
-            console.error(`Worker завершился с ошибкой для задачи ${idPartTask}, код: ${code}`);
-        }
+        worker.on('error', (error) => {
+            console.error(`Ошибка в worker для задачи ${idPartTask}: ${error.name} ${error.stack}`);
+            reject(error);
+        });
+
+        worker.on('exit', (code) => {
+            if (code !== 0) {
+                reject(new Error(`Worker завершился с ошибкой, код: ${code}`));
+            }
+        });
     });
 }
 
 export const postNewTask = async (req, res) => {
-    const { idPartTask } = req.body;
+    const { idPartTask, alphabet, partNumber, partCount, hash, maxLength } = req.body;
 
     if (!idPartTask) {
         return res.status(400).json({ error: "Invalid task data" });
     }
     /////////////
     const channel = getRabbitChannel();
+    const QUEUE_NAME = "task_q";
+
     await channel.assertQueue(QUEUE_NAME, { durable: true });
     channel.consume(
         QUEUE_NAME,
@@ -88,7 +91,7 @@ export const postNewTask = async (req, res) => {
     ////////////////
     if (activeWorkers < 2) {
         ++activeWorkers;
-        processTask({ idPartTask });
+        processTask({ idPartTask, alphabet, partNumber, partCount, hash, maxLength });
         console.log(`Часть задачи = ${idPartTask} отправлена на выполнение.`);
         return res.status(200).json({ message: "Работа запущена" });
     } else {

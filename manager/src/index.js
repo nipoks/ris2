@@ -1,9 +1,10 @@
 import express from 'express';
 import dotenv from 'dotenv';
-import mongoose from "mongoose";
 
 import { AppRoutes } from "./routes.js";
-import {connectToRabbit} from "./rabbitConnection.js";
+import {listenToQueues} from "./rabbit/listenToQueues.js";
+import {connectToMongo} from "./config/db.js";
+import {connectToRabbit} from "./rabbit/connection.js";
 
 dotenv.config();
 
@@ -13,18 +14,18 @@ app.use(AppRoutes);
 
 const PORT = process.env.PORT || 3000;
 
-await mongoose
-    .connect(process.env.MONGO_URI, {
-        dbName: process.env.DB_NAME,
-        useNewUrlParser: true,
-        useUnifiedTopology: true })
-    .then(async () => {
-        console.log("MongoDB connected")
-    })
-    .catch((err) => console.error("MongoDB connection error:", err));
 
-await connectToRabbit()
+(async () => {
+    try {
+        await connectToMongo();
+        await connectToRabbit();
+        await listenToQueues();
 
-app.listen(PORT, () => {
-    console.log("Запущен на порту 3000");
-});
+        app.listen(PORT, () => {
+            console.log(`🚀 Сервер запущен на порту ${PORT}`);
+        });
+    } catch (err) {
+        console.error("❌ Ошибка при старте приложения:", err);
+    }
+})();
+

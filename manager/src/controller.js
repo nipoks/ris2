@@ -3,12 +3,12 @@ import {v4 as uuidv4} from "uuid";
 import dotenv from "dotenv";
 import Task from "./models/task.js";
 import PartTask from "./models/partTask.js";
-import {getRabbitChannel} from "./rabbitConnection.js";
+import {getRabbitChannel} from "./rabbit/connection.js";
+import partTask from "./models/partTask.js";
 
 dotenv.config();
 
 const WORKERS = process.env.WORKERS ? process.env.WORKERS.split(',') : [];
-const WORKERS_QUEUES = process.env.WORKERS_QUEUES ? process.env.WORKERS_QUEUES.split(',') : [];
 let requests = {};
 const alphabet = 'abcdefghijklmnopqrstuvwxyz0123456789';
 
@@ -17,6 +17,28 @@ export const getTaskStatus = async (req, res) => {
     if (!requestId) {
         return res.status(400).json({error: "Invalid requestId"});
     }
+
+    const task = await Task.findOne({idTask: requestId})
+    if (task.status === "READY" ) {
+        return res.json({
+            status: 'READY',
+            data: {
+                answer: task.found,
+                progress: `100%`
+            }
+        });
+    }
+
+    const partsTask = await PartTask.find({idTask: requestId})
+    let persent = 0
+    for (let curPartTask of partsTask) { /// смотреть на процент
+        persent += curPartTask.percentComplete
+    }
+    ////////////////////// ниже старое неверное
+
+
+
+
     let progress = 0
     for (let i = 0; i < WORKERS.length; i++) {
         await axios.get(`${WORKERS[i]}/internal/api/worker/progress/${requestId}`)
@@ -94,88 +116,32 @@ export const getTaskStatus = async (req, res) => {
     });
 }
 
-export const postTaskToWorkers = async (req, res) => {
-    const { hash, maxLength } = req.body;
-    if (!hash || !maxLength) {
-        return res.status(400).json({ error: "Missing parameters" });
-    }
-
-    const requestId = uuidv4();
-
-    console.log(`Новый запрос: ${requestId}`);
-
-    const newTask = new Task({
-        hash,
-        maxLength,
-        idTask: requestId,
-        status: 'CREATE',
-        found: [],
-        percentComplete: 0,
-        alphabet: alphabet
-    })
-    await newTask.save()
-    const channel = getRabbitChannel();
-
-    for (let index = 0; index < WORKERS.length; index++) {
-        requests[requestId + (index + 1)] = {
-            status: 'PENDING',
-            found: null
-        };
-        const partTask = new PartTask({
-            idTask: newTask.idTask,
-            idWorker: index,
-            found: [],
-            status: 'CREATE',
-            percentComplete: 0,
-            partNumber: index + 1,
-            partCount: WORKERS.length,
-            alphabet: alphabet,
-            hash: newTask.hash,
-            maxLength: newTask.maxLength,
-        })
-        await partTask.save()
-        ////
-        const queue = WORKERS_QUEUES[index];
-        const payload = Buffer.from(JSON.stringify(partTask._id));
-
-        await channel.assertQueue(queue, { durable: true });
-        channel.sendToQueue(queue, payload);
-        console.log(`📤 Отправлено в ${queue}:`, partTask._id);
-        ////
-
-
-        axios.post(`${WORKERS[index]}/internal/api/worker/hash/crack/task`, {
-            idPartTask: partTask._id
-        }).then(response => {
-            partTask.status = 'SENT'
-            partTask.save()
-                  })
-            .catch(error => {
-                ///TODO нужно отправить на другово воркера наверно
-                console.error(`Ошибка при отправки задачи воркеру ${index + 1}:`, error.response?.data || error.message);
-            });
-    }
-    newTask.status = 'IN_PROGRESS'
-    await newTask.save()
-    res.json({ requestId });
-}
 
 export const patchTaskFromWorkers = async (req, res) => {
-    const { idPartTask, status, taskId } = req.body;
-    console.log(idPartTask, status, taskId);
+    const { found, idPartTask, status } = req.body;
+    console.log(idPartTask, status, found);
 
-    if (idPartTask === undefined || taskId === undefined) {
+    if (idPartTask === undefined) {
         return res.status(400).json({ error: "Invalid result data" });
     }
     let task
     let partTask
     try {
-        task = await Task.findOne({idTask: taskId})
-        partTask = await PartTask.find({idTask: taskId})
+        // найти по id часть задачи, там взять id главной задачи и найти в базе
+        partTask = await PartTask.findById(idPartTask)
+        // task = await Task.findOne({idTask: partTask.taskId})
         //console.log(task)
         //console.log(partTask)
     } catch (error) {
         console.log("Ошибка получения task и partTask из бд = ", error)
+    }
+
+    if (status === "READY") {
+        partTask.status = 'READY'
+        partTask.found = found
+        await partTask.save()
+    } else {
+
     }
 
     let countReady = 0
@@ -210,4 +176,79 @@ export const patchTaskFromWorkers = async (req, res) => {
     // }
 
     res.status(200).json({ message: "Результат принят" });
+}
+////////////////////////
+export const postTaskToWorkers = async (req, res) => {
+    const { hash, maxLength } = req.body;
+    if (!hash || !maxLength) {
+        return res.status(400).json({ error: "Missing parameters" });
+    }
+
+    const requestId = uuidv4();
+    console.log(`Новый запрос: ${requestId}`);
+    const newTask = new Task({
+        hash,
+        maxLength,
+        idTask: requestId,
+        status: 'CREATE',
+        found: [],
+        percentComplete: 0,
+        alphabet: alphabet
+    })
+    await newTask.save()
+
+    const channel = getRabbitChannel();
+    const queue = "task_q";
+    await channel.assertQueue(queue, { durable: true });
+
+    for (let index = 0; index < WORKERS.length; index++) {
+        requests[requestId + (index + 1)] = {
+            status: 'PENDING',
+            found: null
+        };
+        const partTask = new PartTask({
+            idTask: newTask.idTask,
+            idWorker: index,
+            found: [],
+            status: 'CREATE',
+            percentComplete: 0,
+            partNumber: index + 1,
+            partCount: WORKERS.length,
+            alphabet: alphabet,
+            hash: newTask.hash,
+            maxLength: newTask.maxLength,
+        })
+        await partTask.save()
+        ////
+        const data = {
+            idPartTask: partTask._id,
+            alphabet: alphabet,
+            partNumber: index + 1,
+            partCount: WORKERS.length,
+            hash: newTask.hash,
+            maxLength: newTask.maxLength
+        }
+        const payload = Buffer.from(JSON.stringify({data}));
+        channel.sendToQueue(queue, payload, { persistent: true });
+        console.log(`📤 Отправлено в ${queue}:`, partTask._id);
+        partTask.status = 'SENT'
+        await partTask.save()
+    }
+    newTask.status = 'IN_PROGRESS'
+    await newTask.save()
+    res.json({ requestId });
+}
+
+export const handlerAnswerFromWorker = async (data) => {
+    let partTask
+    try {
+        partTask = await PartTask.findById(data.idPartTask)
+    } catch (error) {
+        console.log("Ошибка получения task и partTask из бд = ", error)
+    }
+    if (data.status === "READY") {
+        partTask.status = 'READY'
+        partTask.found = data.found
+        await partTask.save()
+    }
 }

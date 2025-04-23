@@ -83,18 +83,22 @@ curl -X POST http://localhost:3000/api/hash/crack -H "Content-Type: application/
 curl -X GET http://localhost:3000/api/hash/status?requestId=
 ```
 requestId - id который вернул менеджер после создания задачи
-* PART_ANSWER_IS_READY - случилась ошибка у воркера, но кто-то нашел вариант ответа
+* CREATE  - создана и сохранена в бд
+* SENT - отправлена в брокер
+* PART_ANSWER - выполнена часть задачи
 * IN_PROGRESS - кто-то еще работает
 * READY - все воркеры отработали успешно
 * ERROR
   
 Пример ответа:
 ```
-{  "status" : "IN_PROGRESS",
-   "data" : {
-              "answer" : null,
-              "progress" : "22%"
-             }
+{  
+    "status" : "IN_PROGRESS",
+    "data" : 
+        {
+            "answer" : null,
+            "progress" : "22%"
+        }
 }
 ```
 ___ 

@@ -7,7 +7,7 @@ import {getRabbitChannel} from "./rabbit/connection.js";
 dotenv.config();
 
 const WORKERS = process.env.WORKERS ? process.env.WORKERS.split(',') : [];
-let requests = {};
+
 const alphabet = 'abcdefghijklmnopqrstuvwxyz0123456789';
 
 export const getTaskStatus = async (req, res) => {
@@ -63,15 +63,10 @@ export const postTaskToWorkers = async (req, res) => {
     })
     await newTask.save()
 
-    const channel = getRabbitChannel();
-    const queue = "task_q";
-    await channel.assertQueue(queue, { durable: true });
+/// сперва создать пачку подчастей, потом попытаться в очередь отправить, если ок изменить на статус отправлено
+    const createdParts = [];
 
     for (let index = 0; index < WORKERS.length; index++) {
-        requests[requestId + (index + 1)] = {
-            status: 'PENDING',
-            found: null
-        };
         const partTask = new PartTask({
             idTask: newTask.idTask,
             idWorker: index,
@@ -83,26 +78,49 @@ export const postTaskToWorkers = async (req, res) => {
             alphabet: alphabet,
             hash: newTask.hash,
             maxLength: newTask.maxLength,
-        })
-        await partTask.save()
-        ////
-        const data = {
-            idPartTask: partTask._id,
-            alphabet: alphabet,
-            partNumber: index + 1,
-            partCount: WORKERS.length,
-            hash: newTask.hash,
-            maxLength: newTask.maxLength
-        }
-        const payload = Buffer.from(JSON.stringify({data}));
-        channel.sendToQueue(queue, payload, { persistent: true });
-        console.log(`Отправлено в ${queue}:`, partTask._id);
-        partTask.status = 'SENT'
-        await partTask.save()
+        });
+        await partTask.save();
+        createdParts.push(partTask);
     }
-    newTask.status = 'IN_PROGRESS'
-    await newTask.save()
-    res.json({ requestId });
+
+
+    try {
+        const channel = getRabbitChannel();
+        const queue = process.env.TASK_QUEUE;
+        await channel.assertQueue(queue, { durable: true });
+
+        for (const partTask of createdParts) {
+            try {
+                const data = {
+                    idPartTask: partTask._id,
+                    alphabet: alphabet,
+                    partNumber: partTask.partNumber,
+                    partCount: partTask.partCount,
+                    hash: partTask.hash,
+                    maxLength: partTask.maxLength,
+                };
+                const payload = Buffer.from(JSON.stringify({ data }));
+                channel.sendToQueue(queue, payload, { persistent: true });
+                console.log(`Отправлено в очередь ${queue}:`, partTask._id);
+                partTask.status = 'SENT';
+                await partTask.save();
+            } catch (err) {
+                console.warn(`Не удалось отправить часть ${partTask._id}: ${err.message}`);
+                throw new Error('RabbitMQ недоступен. Не все подчасти были отправлены.');
+            }
+        }
+
+        newTask.status = 'IN_PROGRESS'
+        await newTask.save()
+        res.json({ requestId });
+
+    } catch (err) {
+        console.error(`Ошибка при распределении задачи ${requestId}:`, err.message);
+        return res.status(503).json({
+            error: 'Не удалось отправить задачу воркерам. Недоступен брокер, выполним позже.',
+            requestId
+        });
+    }
 }
 
 export const handlerAnswerFromWorker = async (data) => {

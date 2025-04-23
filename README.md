@@ -45,6 +45,10 @@ npm install
 ```
 docker-compose up --build
 ```
+Снести
+```
+docker-compose down -v
+```
 
 # Пример использования
 Сайт для генерации хэша по слову: https://www.md5hashgenerator.com/

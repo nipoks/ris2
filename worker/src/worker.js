@@ -2,7 +2,6 @@ import { parentPort } from 'worker_threads';
 import { createHash } from 'crypto';
 import SharedMap from "sharedmap";
 
-
 function hashString(str) {
     return createHash('md5').update(str).digest('hex');
 }
@@ -52,14 +51,10 @@ async function hardWork(idPartTask, alphabet, partNumber, partCount, hash, maxLe
             found.push(word);
         }
         myMap.set(idPartTask, Math.floor((i - range.start) / (range.end - range.start) * 100));
-        if (i % 10000000 === 0) {
-            console.log(myMap.get(idPartTask));
-        }
     }
     myMap.set(idPartTask, 100);
 
     parentPort.postMessage({found, idPartTask, status: 'READY'});
-
 }
 
 parentPort.on('message', async (data) => {

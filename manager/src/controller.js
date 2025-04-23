@@ -1,10 +1,8 @@
-import axios from 'axios';
 import {v4 as uuidv4} from "uuid";
 import dotenv from "dotenv";
 import Task from "./models/task.js";
 import PartTask from "./models/partTask.js";
 import {getRabbitChannel} from "./rabbit/connection.js";
-import partTask from "./models/partTask.js";
 
 dotenv.config();
 
@@ -34,150 +32,16 @@ export const getTaskStatus = async (req, res) => {
     for (let curPartTask of partsTask) { /// смотреть на процент
         persent += curPartTask.percentComplete
     }
-    ////////////////////// ниже старое неверное
 
-
-
-
-    let progress = 0
-    for (let i = 0; i < WORKERS.length; i++) {
-        await axios.get(`${WORKERS[i]}/internal/api/worker/progress/${requestId}`)
-            .then(response => {
-                progress += parseInt(response.data.progress)
-            })
-            .catch(error => {
-                console.log(`Error: worker${WORKERS[i]} - ${error.response.data.error}`);
-            })
-    }
-
-    progress = Math.floor(progress / WORKERS.length);
-    console.log(progress);
-
-    let countReady = 0
-    let countError = 0
-    let answer = []
-
-    for (let i = 1; i <= WORKERS.length; i++) {
-        const status = requests[requestId + i].status;
-        switch (status) {
-            case 'IN_PROGRESS':    // хоть 1 InProgress - в ответ IP
-                return res.json({
-                    status: 'IN_PROGRESS',
-                    data: {
-                        answer: null,
-                        progress: `${progress}%`
-                    }
-                });
-            case 'READY':
-                countReady += 1
-                const answerI = requests[requestId + i].found
-                if (answerI !== null) {
-                    answer.push(answerI)
-                }
-                break;
-            case 'ERROR':
-                countError += 1
-                break;
-            default:
-                break;
-        }
-    }
-
-    if (countReady === WORKERS.length) {
-        return res.json({
-            status: 'READY',
-            data: {
-                answer: answer,
-                progress: `100%`
-            }
-        });
-    }
-
-    if (countError > 0) {
-        if (answer.length > 0) { // если есть error но хоть 1 ответ не пустой - ответ PART_ANSWER_IS_READY 'abcd'
-            return res.json({
-                status: 'PART_ANSWER_IS_READY',
-                data: {
-                    answer: answer,
-                    progress: `${progress}%`
-                }
-            });
-        }
-
-        return res.json({
-            status: 'ERROR',
-            data: null
-        });
-    }
-
+    const progress = Math.floor(persent / partsTask.length);
     return res.json({
-        status: 'I_D\'NOT_NO',
-        data: null
+        status: 'IN_PROGRESS',
+        data: {
+            progress: `${progress}%`
+        }
     });
 }
 
-
-export const patchTaskFromWorkers = async (req, res) => {
-    const { found, idPartTask, status } = req.body;
-    console.log(idPartTask, status, found);
-
-    if (idPartTask === undefined) {
-        return res.status(400).json({ error: "Invalid result data" });
-    }
-    let task
-    let partTask
-    try {
-        // найти по id часть задачи, там взять id главной задачи и найти в базе
-        partTask = await PartTask.findById(idPartTask)
-        // task = await Task.findOne({idTask: partTask.taskId})
-        //console.log(task)
-        //console.log(partTask)
-    } catch (error) {
-        console.log("Ошибка получения task и partTask из бд = ", error)
-    }
-
-    if (status === "READY") {
-        partTask.status = 'READY'
-        partTask.found = found
-        await partTask.save()
-    } else {
-
-    }
-
-    let countReady = 0
-    for (let curPartTask of partTask) {
-        if (curPartTask.status === 'READY' && curPartTask.percentComplete === 100) {
-            countReady += 1
-            //console.log(curPartTask)
-
-            if (curPartTask.found !== undefined && curPartTask.found.length > 0) {
-                for (let foundWord of curPartTask.found) {
-                    if (!task.found.includes(foundWord)) {
-                        task.found.push(foundWord);
-                    }
-                }
-            }
-        }
-    }
-
-    if (countReady === partTask.length) {
-        console.log("Зашел обновлять статус")
-        task.status = "READY"
-        task.percentComplete = 100
-        task.save()
-    }
-    // чекнуть если все части готовы то и основную сделать статус реди и 100 %
-
-
-    // if (task && partTask && partTask.percentComplete === 100 && partTask.status === "READY") {
-    //     console.log("Зашел обновлять статус")
-    //     task.status = "PART_ANSWER_IS_READY"
-    //     task.save()
-    // }
-
-    res.status(200).json({ message: "Результат принят" });
-}
-////////////////////////
 export const postTaskToWorkers = async (req, res) => {
     const { hash, maxLength } = req.body;
     if (!hash || !maxLength) {
@@ -193,6 +57,8 @@ export const postTaskToWorkers = async (req, res) => {
         status: 'CREATE',
         found: [],
         percentComplete: 0,
+        partCount: WORKERS.length,
+        partComplete: 0,
         alphabet: alphabet
     })
     await newTask.save()
@@ -230,7 +96,7 @@ export const postTaskToWorkers = async (req, res) => {
         }
         const payload = Buffer.from(JSON.stringify({data}));
         channel.sendToQueue(queue, payload, { persistent: true });
-        console.log(`📤 Отправлено в ${queue}:`, partTask._id);
+        console.log(`Отправлено в ${queue}:`, partTask._id);
         partTask.status = 'SENT'
         await partTask.save()
     }
@@ -241,8 +107,11 @@ export const postTaskToWorkers = async (req, res) => {
 
 export const handlerAnswerFromWorker = async (data) => {
     let partTask
+    let task
     try {
         partTask = await PartTask.findById(data.idPartTask)
+        task = await Task.findOne({idTask: partTask.idTask})
+
     } catch (error) {
         console.log("Ошибка получения task и partTask из бд = ", error)
     }
@@ -250,5 +119,36 @@ export const handlerAnswerFromWorker = async (data) => {
         partTask.status = 'READY'
         partTask.found = data.found
         await partTask.save()
+        task.partComplete += 1
+
+        if (partTask.found !== undefined && partTask.found.length > 0) {
+            for (let foundWord of partTask.found) {
+                if (!task.found.includes(foundWord)) {
+                    task.found.push(foundWord);
+                }
+            }
+        }
+        console.log(task.found)
+
+        if (task.partComplete === task.partCount) {
+            task.status = 'READY'
+            task.percentComplete = 100
+        }
+
+        await task.save()
+    }
+}
+
+export const handlerStatusFromWorker = async (data) => {
+    try {
+        const partTask = await PartTask.findById(data.idPartTask)
+        if (partTask.status === 'READY' && partTask.percentComplete === 100) {
+            return
+        }
+        partTask.status = data.status;
+        partTask.percentComplete = data.percentComplete;
+        await partTask.save()
+    } catch (error) {
+        console.log(error)
     }
 }

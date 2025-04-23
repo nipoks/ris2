@@ -7,9 +7,9 @@ export const connectToMongo = async () => {
             useNewUrlParser: true,
             useUnifiedTopology: true,
         });
-        console.log("✅ MongoDB подключен");
+        console.log("MongoDB подключен");
     } catch (err) {
-        console.error("❌ Ошибка подключения к MongoDB:", err);
+        console.error("Ошибка подключения к MongoDB:", err);
         throw err;
     }
 };

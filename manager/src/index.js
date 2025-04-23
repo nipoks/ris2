@@ -14,18 +14,20 @@ app.use(AppRoutes);
 
 const PORT = process.env.PORT || 3000;
 
-
-(async () => {
+const startServer = async () => {
     try {
         await connectToMongo();
         await connectToRabbit();
         await listenToQueues();
 
         app.listen(PORT, () => {
-            console.log(`🚀 Сервер запущен на порту ${PORT}`);
+            console.log(`Сервер запущен на порту ${PORT}`);
         });
     } catch (err) {
-        console.error("❌ Ошибка при старте приложения:", err);
+        console.error("Ошибка при старте приложения:", err);
     }
-})();
+}
+
+setTimeout(startServer, 10000);
+
 

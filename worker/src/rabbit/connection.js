@@ -1,14 +1,16 @@
 import amqp from 'amqplib';
 
 let channel = null;
+let connection = null;
 
 export const connectToRabbit = async () => {
     try {
-        const connection = await amqp.connect(process.env.RABBIT_URI);
+        connection = await amqp.connect(process.env.RABBIT_URI);
         connection.on('close', () => {
             console.warn('RabbitMQ соединение закрыто. Попробуем переподключиться...');
             setTimeout(connectToRabbit, 5000);
         });
+
         connection.on('error', (err) => {
             console.error('Ошибка RabbitMQ соединения:', err.message);
         });

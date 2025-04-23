@@ -138,6 +138,8 @@ export const handlerAnswerFromWorker = async (data) => {
         partTask.found = data.found
         await partTask.save()
         task.partComplete += 1
+        task.status = 'PART_ANSWER'
+        task.percentComplete += 100 / WORKERS.length
 
         if (partTask.found !== undefined && partTask.found.length > 0) {
             for (let foundWord of partTask.found) {

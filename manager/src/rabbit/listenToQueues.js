@@ -5,7 +5,6 @@ export const listenToQueues = async () => {
     try {
         const channel = getRabbitChannel();
 
-
         const ANSWER_QUEUE = process.env.ANSWER_QUEUE;
         const STATUS_QUEUE = process.env.STATUS_QUEUE;
 
@@ -44,7 +43,6 @@ export const listenToQueues = async () => {
                 try {
                     console.log("Получен статус по задаче от воркера:", answer);
                     await handlerStatusFromWorker(answer);
-
                     channel.ack(msg)
                 } catch (err) {
                     console.error("Ошибка обработки статуса, отправим в очередь снова");
@@ -53,7 +51,6 @@ export const listenToQueues = async () => {
             }
         });
     } catch (err) {
-        console.error("Не удалось подключиться к RabbitMQ:", err);
-        setTimeout(listenToQueues, 10000);
+        console.error("Не удалось навешать слушателей к RabbitMQ:", err);
     }
 };

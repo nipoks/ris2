@@ -110,7 +110,7 @@ export const postTaskToWorkers = async (req, res) => {
             }
         }
 
-        newTask.status = 'IN_PROGRESS'
+        newTask.status = 'SENT'
         await newTask.save()
         res.json({ requestId });
 

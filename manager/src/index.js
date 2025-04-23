@@ -18,7 +18,6 @@ const startServer = async () => {
     try {
         await connectToMongo();
         await connectToRabbit();
-        await listenToQueues();
 
         app.listen(PORT, () => {
             console.log(`Сервер запущен на порту ${PORT}`);

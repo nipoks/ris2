@@ -21,7 +21,6 @@ export const listenToQueues = async () => {
                     console.error("Ошибка обработки задачи, отправим в очередь снова");
                     if (channel.connection?.stream?.destroyed) {
                         console.warn("Соединение с Rabbit потеряно. Не будем делать NACK, задача вернётся сама.");
-                        return;
                     }
 
                     try {
@@ -33,8 +32,7 @@ export const listenToQueues = async () => {
             }
         });
     } catch (err) {
-        console.error("Не удалось подключиться к RabbitMQ:", err);
-        setTimeout(listenToQueues, 10000);
+        console.error("Не удалось навешать слушателей к RabbitMQ:", err);
     }
 };
 

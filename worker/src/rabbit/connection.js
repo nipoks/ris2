@@ -1,4 +1,5 @@
 import amqp from 'amqplib';
+import {listenToQueues} from "./listenToQueues.js";
 
 let channel = null;
 let connection = null;
@@ -17,6 +18,8 @@ export const connectToRabbit = async () => {
 
         channel = await connection.createChannel();
         console.log("Подключение к RabbitMQ установлено");
+
+        await listenToQueues()
     } catch (err) {
         console.error("Не удалось подключиться к RabbitMQ:", err);
         setTimeout(connectToRabbit, 10000);

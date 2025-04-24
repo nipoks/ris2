@@ -4,14 +4,10 @@ services:
   mongo-primary:
     image: mongo:6.0
     container_name: mongo-primary
-    command: [ "--replSet", "rs0", "--bind_ip_all", "--keyFile", "/etc/mongo-keyfile" ]
-    environment:
-      MONGO_INITDB_ROOT_USERNAME: admin
-      MONGO_INITDB_ROOT_PASSWORD: pass
+    command: [ "--replSet", "rs0", "--bind_ip_all" ]
     ports:
       - "27017:27017"
     volumes:
-      - ./mongo-keyfile:/etc/mongo-keyfile:ro
       - mongo_data_primary:/data/db
     networks:
       - crackhash_net
@@ -19,12 +15,8 @@ services:
   mongo-secondary1:
     image: mongo:6.0
     container_name: mongo-secondary1
-    command: [ "--replSet", "rs0", "--bind_ip_all", "--keyFile", "/etc/mongo-keyfile" ]
-    environment:
-      MONGO_INITDB_ROOT_USERNAME: admin
-      MONGO_INITDB_ROOT_PASSWORD: pass
+    command: [ "--replSet", "rs0", "--bind_ip_all" ]
     volumes:
-      - ./mongo-keyfile:/etc/mongo-keyfile:ro
       - mongo_data_secondary1:/data/db
     networks:
       - crackhash_net
@@ -32,12 +24,8 @@ services:
   mongo-secondary2:
     image: mongo:6.0
     container_name: mongo-secondary2
-    command: [ "--replSet", "rs0", "--bind_ip_all", "--keyFile", "/etc/mongo-keyfile" ]
-    environment:
-      MONGO_INITDB_ROOT_USERNAME: admin
-      MONGO_INITDB_ROOT_PASSWORD: pass
+    command: [ "--replSet", "rs0", "--bind_ip_all" ]
     volumes:
-      - ./mongo-keyfile:/etc/mongo-keyfile:ro
       - mongo_data_secondary2:/data/db
     networks:
       - crackhash_net
@@ -55,7 +43,7 @@ services:
       "sh", "-c",
       "
         sleep 10 &&
-        mongosh --host mongo-primary:27017 -u admin -p pass --authenticationDatabase admin --eval '
+        mongosh --host mongo-primary:27017 --eval '
           rs.initiate({
             _id: \"rs0\",
             members: [
@@ -72,9 +60,8 @@ services:
     image: mongo-express:latest
     container_name: mongo-express
     environment:
-      ME_CONFIG_MONGODB_ADMINUSERNAME: admin
-      ME_CONFIG_MONGODB_ADMINPASSWORD: pass
       ME_CONFIG_MONGODB_SERVER: mongo-primary
+      ME_CONFIG_BASICAUTH: "false"
     ports:
       - "8081:8081"
     depends_on:
@@ -90,8 +77,8 @@ services:
       RABBITMQ_DEFAULT_USER: guest
       RABBITMQ_DEFAULT_PASS: guest
     ports:
-      - "5672:5672"   # AMQP
-      - "15672:15672" # веб-интерфейс
+      - "5672:5672"
+      - "15672:15672"
     networks:
       - crackhash_net
     restart: always

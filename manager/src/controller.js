@@ -15,15 +15,22 @@ export const getTaskStatus = async (req, res) => {
     if (!requestId) {
         return res.status(400).json({error: "Invalid requestId"});
     }
+    let task
+    try {
+        task = await Task.findOne({idTask: requestId})
+        if (task.status === "READY" ) {
+            return res.json({
+                status: 'READY',
+                data: {
+                    answer: task.found,
+                    progress: `100%`
+                }
+            });
+        }
 
-    const task = await Task.findOne({idTask: requestId})
-    if (task.status === "READY" ) {
+    } catch (err) {
         return res.json({
-            status: 'READY',
-            data: {
-                answer: task.found,
-                progress: `100%`
-            }
+            error: 'Несуществующий requestId',
         });
     }
 
